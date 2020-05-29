@@ -1,0 +1,12 @@
+name: HedgeFundApp
+title: HedgeFundApp
+username:
+account: chrissheng
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2344428
+bundleId: 3185358
+url: https://chrissheng.shinyapps.io/HedgeFundApp/
+when: 1590356137.02915
+asMultiple: FALSE
+asStatic: FALSE
