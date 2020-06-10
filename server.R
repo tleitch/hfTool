@@ -1,5 +1,6 @@
 source('./func/functions.R')
 library(quantmod)
+library(ahf)
 library(tibble)
 
 
@@ -11,175 +12,47 @@ shinyServer(function(input, output, session){
   #####  Section 1
   ######################
   
-  ### Reset the time input if start == end
   
-  observeEvent(input$date_range,{
-    if(input$date_range[1] == input$date_range[2]){
-      updateSliderTextInput(session,"date_range",selected = c(date_choices[1],date_choices[length(date_choices)]))
+  # choose columns to display
+  output$mytable1 <- DT::renderDataTable({
+    dt = edhec2[paste(input$year), input$show_vars, drop = FALSE]
+    dt = data.frame(Date = index(dt), coredata(dt))
+    DT::datatable(dt)
+  })
+  
+  output$cvalues <- renderPrint({
+    dt = edhec2[paste(input$year), input$show_vars, drop = FALSE]
+    if (input$criteria == "Sharpe Ratio"){
+      knitr::kable(SharpeRatio.annualized(dt))
+    }
+    else if(input$criteria == "Sortino Ratio"){
+      knitr::kable(SortinoRatio(dt))
+    }
+    else if(input$criteria == "CAPM beta"){
+      knitr::kable(CAPM.beta(dt,edhec2[,"SPY"]))
+    }
+    else if(input$criteria == "Kurtosis"){
+      knitr::kable(kurtosis(dt))
+    }
+    else if(input$criteria == "Skewness"){
+      knitr::kable(skewness(dt))
+    }
+    else if(input$criteria == "Calmar Ratio"){
+      knitr::kable(CalmarRatio(dt))
+    }
+    else if(input$criteria == "Jensen’s alpha"){
+      knitr::kable(CAPM.alpha(dt,edhec2[,"SPY"]))
+    }
+    else if(input$criteria == "Omega ratio"){
+      knitr::kable(Omega(dt,edhec2[,"SPY"]))
+    }
+    else if(input$criteria == "Bull beta"){
+      knitr::kable(CAPM.beta.bull(dt,edhec2[,"SPY"]))
+    }
+    else if(input$criteria == "Bear beta"){
+      knitr::kable(CAPM.beta.bear(dt,edhec2[,"SPY"]))
     }
   })
-  
-  ### Input for assets' tickers and parameters
-  
-  output$asset_sec1 <- renderRHandsontable({
-    DF = data.frame(
-      Asset= c("SPY", "AGG", "SHV", "LQD", rep("",26)),
-      fastSMA = c(15,16,17,18,rep("",26)),
-      slowSMA = c(45,46,47,48,rep("",26)),
-      stopLimLong = c(4,5,6,7,rep("",26)),
-      stopLimShort = c(1.5,2,3,4,rep("",26)),
-      stringsAsFactors = FALSE)
-    
-    colnames(DF) = c("Asset", "Fast_Moving_Average", "Slow_Moving_Average", "Stop_Loss_Long(%)", "Stop_Loss_Short(%)")
-    
-    rhandsontable(DF, width = 700, height = 300) %>%
-      hot_col("Asset", allowInvalid = TRUE)
-  })
-  
-  
-  ### Fetch data for section 1
-  
-  fetchdata_sec1 <- reactive({
-    if(input$fetch_sec1==0){return()} #confirming button click
-    # input$fetch_sec1
-    # data = hot_to_r(input$asset_sec1)
-    # tickers = paste(data$Asset, sep = ",")
-    # tickers
-    isolate({
-      input$fetch_sec1
-      
-      data = hot_to_r(input$asset_sec1)
-      tickers = paste(data$Asset, sep = ",")
-      tickers = tickers[-which(tickers == "")]
-      
-      init_date = input$date_range_sec1[1]
-      start_date = input$date_range_sec1[1]
-      end_date = input$date_range_sec1[2]
-      # init_date = "2014-01-01"
-      # start_date = "2014-01-01"
-      # end_date = "2019-07-12"
-      x = list()
-      for (i in 1:length(tickers)) {
-        x[[i]] = getSymbols(Symbols = tickers[i], 
-                            src = "yahoo", 
-                            index.class = "POSIXct",
-                            from = start_date, 
-                            to = end_date, 
-                            auto.assign = FALSE,
-                            env = stockData,
-                            adjust = TRUE)
-        # getSymbols(i, env = .GlobalEnv, from = "1999-12-31")
-      }
-    })
-    # Data = get(tickers[1], stockData)
-    # test = cta_one_shot(tickers[1], 15, 45, .04, .015)
-    return(x)
-    
-  })
-  
-  ### get the log return for each asset
-  
-  backtest_sec1 <- reactive({
-    input$backtest_go
-    isolate({
-      data = hot_to_r(input$asset_sec1)
-      tickers = paste(data$Asset, sep = ",")
-      tmp2del = which(tickers == "")
-      tickers = tickers[-tmp2del]
-      data = data[-tmp2del,]
-      stockPool = fetchdata_sec1()
-      
-      CTAreturn = xts()
-      for (i in 1:(dim(data)[1])) {
-        tmpReturn = cta_one_shot(data[i,1],
-                                 as.numeric(data[i,2]),
-                                 as.numeric(data[i,3]),
-                                 as.numeric(data[i,4])/100,
-                                 as.numeric(data[i,5])/100,
-                                 stockPool[[i]],
-                                 init_date = input$date_range_sec1[1],
-                                 start_date = input$date_range_sec1[1],
-                                 end_date = input$date_range_sec1[2])
-        colnames(tmpReturn) = data[i,1]
-        CTAreturn = cbind(CTAreturn, tmpReturn)
-      }
-      # CTAreturn = CTAreturn[,-1]
-      # CTAreturn = list()
-      # CTAreturn = cta_one_shot(data[1,1], as.numeric(data[1,2]), as.numeric(data[1,3]),
-      #                        as.numeric(data[1,4])/100, as.numeric(data[1,5])/100)
-      # returns2 = cta_one_shot(data[2,1], as.numeric(data[2,2]), as.numeric(data[2,3]),
-      #                        as.numeric(data[2,4])/100, as.numeric(data[2,5])/100)
-      # tmp = cbind(CTAreturn, returns, returns2)
-    })
-    return(CTAreturn)
-    # if(is.null(input$asset_sec1)) {
-    #   return()
-    # } else {
-    #   return(CTAreturn)
-    # }
-  })
-  
-  
-  pureTest <- reactive({
-    if(input$fetch_sec1==0){return()} #confirming button click
-    isolate({
-      input$fetch_sec1
-      data = hot_to_r(input$asset_sec1)
-      tickers = paste(data$Asset, sep = ",")
-      Data = get(tickers[1], stockData)
-      Data
-    })
-    
-  })
-  # fetchdata_sec1
-  # output$tttest = renderPrint(fetchdata_sec1()[[2]])
-  # output$tttest2 = renderPrint(backtest_sec1()[1:5,])
-  
-  # output$tttest2 = renderPrint(backtest_sec1()[(dim(backtest_sec1())[1]),])
-  
-  ### graph the backtest result
-  
-  output$bt_sec1 = renderPlot({
-    validate(need(input$backtest_go, "")
-             
-             )
-    input$backtest_go
-    isolate({
-      CTAreturns = backtest_sec1()
-      portfolioReturns = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
-      charts.PerformanceSummary(portfolioReturns, colorset = rich6equal,
-                                main = "Strategy Performance", legend.loc = "bottomleft", cex.legend=1.15)
-      # charts.PerformanceSummary(CTAreturns, colorset = rich6equal,ylim = c(min(CTAreturns), max(CTAreturns)),
-      #                           main = "Strategy Performance", legend.loc = "bottomleft", cex.legend=1.15)
-      
-    })
-    # if(is.null(CTAreturns)) {
-    #   return(NULL)
-    # }
-  })
-  
-  ### generate summary table to compare performance
-  
-  output$performance_sec1 <- renderRHandsontable({
-    input$backtest_go
-    isolate({
-      CTAreturns = backtest_sec1()
-      if (dim(CTAreturns)[2] == 1) {
-        sumTable = performanceSummary(CTAreturns)
-      } else {
-        Portfolio = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
-        CTAreturns = cbind(Portfolio, CTAreturns)
-        sumTable = multiPerformance(CTAreturns)
-      }
-      sumTable = sumTable %>% rownames_to_column("Performance Analysis")
-      rhandsontable(sumTable,
-                    # width = 800, height = 300,
-                    readOnly = TRUE) %>%
-        hot_table(highlightRow = TRUE)
-
-    })
-  })
-  
   
   
   ######################

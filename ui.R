@@ -12,8 +12,7 @@ library(Rglpk)
 library(DEoptim)
 library(quantmod)
 library(downloader)
-# library(quantstrat)
-
+library(ahf)
 
 
 shinyUI(dashboardPage(skin = "black" , 
@@ -21,12 +20,6 @@ shinyUI(dashboardPage(skin = "black" ,
                       
                       dashboardSidebar(
                         sidebarUserPanel("", img(src="carey.png",width="80%")),
-                        # mainPanel(
-                        #   tags$style(type="text/css",
-                        #              ".shiny-output-error { visibility: hidden; }",
-                        #              ".shiny-output-error:before { visibility: hidden; }"
-                        #   )
-                        # ),
                         br(),
                         sidebarMenu(
                           # menuItem("About", tabName = "about", icon = icon("book")),
@@ -67,63 +60,29 @@ shinyUI(dashboardPage(skin = "black" ,
                           
                           #### Section 1
                           tabItem(tabName = "sec1",
-                                  fluidRow(column(12, h3("Rule Based Trading : Trend"), align = "center")
-                                  ),
-                                  br(),br(),
-                                  fluidRow(
-                                    # column(1),
-                                    column(12, h4("Construct your portfolio:"), align = "left")),
-                                  br(),
-                                  
-                                  fluidRow(
-                                    # column(1),
-                                    column(7,
-                                           wellPanel(div(rHandsontableOutput("asset_sec1"))
-                                           )
+                                  headerPanel("Calculation of Performance Measures"),
+                                  sidebarLayout(
+                                    sidebarPanel(
+                                      checkboxGroupInput("show_vars", "Columns:",
+                                                         names(edhec2), selected = names(edhec2)[1:6]),
+                                      sliderInput("year",
+                                                  "Select Viewing Years:",
+                                                  min = 1997,  max = 2019, value = c(2004,2012)),
+                                      
+                                      selectInput("criteria", "Assessment Criteria:",
+                                                  choices = c("Sharpe Ratio", "Sortino Ratio", "CAPM beta","Kurtosis",
+                                                              "Skewness","Calmar Ratio","Jensen’s alpha","Omega ratio","Bull beta","Bear beta"))
                                     ),
-                                    # column(1),
-                                    column(5,
-                                           h4("Some descriptions"),
-                                           br(),
-                                           p("All tickers from Yahoo finance and FRED are valid."),
-                                           br(),
-                                           p("fast and slow SMA are set to....."),
-                                           br(),
-                                           p("stop loss for long and short position are set to..."),
-                                           br(),
-                                           p("Click the botton below to fetch real-time data:"),
-                                           br(),
-                                           actionBttn("fetch_sec1", label = "FetchData", color = "primary"),
-                                           actionBttn("backtest_go", label = "Backtest", color = "primary")
-                                           
+                                    mainPanel(
+                                      tabsetPanel(
+                                        id = 'dataset',
+                                        tabPanel("edhec2", DT::dataTableOutput("mytable1"))
+                                      ),
+                                      
+                                      h4("Criteria Values"),
+                                      verbatimTextOutput("cvalues")
                                     )
-                                  ),
-                                  
-                                  fluidRow(column(12,
-                                                  # verbatimTextOutput("tttest"),
-                                                  div(sliderTextInput(
-                                                    inputId = "date_range_sec1", label = h4("Time interval:"), width = "80%",
-                                                    choices = date_choices, selected = range(date_choices),
-                                                    grid = TRUE, dragRange = FALSE
-                                                  ), align = "center"))
-                                  ),
-                                  br(),
-                                  # fluidRow(column(12, plotOutput("bt_sec1"))
-                                  #          ),
-                                  
-                                  
-                                  # fluidRow(column(12, verbatimTextOutput("tttest2"))
-                                  # ),
-                                  fluidRow(column(12, plotOutput("bt_sec1"))
-                                  ),
-                                  br(), br(),
-                                  fluidRow(
-                                    # column(1),
-                                    column(12, h4("Performance analysis for the entire portfolio and each asset inside:"), align = "left")),
-                                  br(),
-                                  fluidRow(column(12, rHandsontableOutput("performance_sec1"), align = "left")
-                                  ),
-                                  fluidRow()
+                                  )
                           ),
                           
                           
