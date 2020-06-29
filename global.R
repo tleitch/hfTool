@@ -19,6 +19,8 @@ library(quantmod)
 library(downloader)
 # library(quantstrat)
 library(tseries)
+library(FinancialInstrument)
+
 
 # rsconnect::appDependencies()
 
@@ -56,3 +58,16 @@ df_sec3 = data.frame(
   stringsAsFactors = FALSE)
 
 colnames(df_sec3) = c("Factors", "Lower Limit", "Upper Limit")
+
+## Set up for section 2
+
+if (!exists('.blotter')) .blotter <- new.env()
+if (!exists('.strategy')) .strategy <- new.env()
+
+
+init_equity <- 10000000 # $10,000,000
+currency("USD")
+
+portfolio.st <- "Port.Luxor"
+account.st <- "Acct.Luxor"
+strategy.st <- "Strat.Luxor"

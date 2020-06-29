@@ -2,6 +2,8 @@ source('./func/functions.R')
 library(quantmod)
 library(ahf)
 library(tibble)
+library(quantstrat)
+library(FinancialInstrument)
 
 
 shinyServer(function(input, output, session){
@@ -12,46 +14,278 @@ shinyServer(function(input, output, session){
   #####  Section 1
   ######################
   
-  
   # choose columns to display
-  output$mytable1 <- DT::renderDataTable({
-    dt = edhec2[paste(input$year), input$show_vars, drop = FALSE]
-    dt = data.frame(Date = index(dt), coredata(dt))
-    DT::datatable(dt)
-  })
+  output$mytable1 <- DT::renderDataTable(
+    data.frame(edhec2[paste(input$dateRange,collapse = '/') , input$show_vars, drop = FALSE]),
+    options = list(scrollX = TRUE)
+  )
   
   output$cvalues <- renderPrint({
-    dt = edhec2[paste(input$year), input$show_vars, drop = FALSE]
-    if (input$criteria == "Sharpe Ratio"){
-      knitr::kable(SharpeRatio.annualized(dt))
+    dt = edhec2[paste(input$dateRange,collapse = '/') , input$show_vars, drop = FALSE]
+    dataframe = data.frame(matrix(ncol = length(input$show_vars), nrow = 0))
+    names(dataframe) = input$show_vars
+    
+    if ("Sharpe Ratio" %in% input$criteria){
+      dataframe["Sharpe Ratio",] = SharpeRatio(dt)
     }
-    else if(input$criteria == "Sortino Ratio"){
-      knitr::kable(SortinoRatio(dt))
+    
+    if ("Sortino Ratio" %in% input$criteria){
+      dataframe["Sortino Ratio",] = SortinoRatio(dt)
     }
-    else if(input$criteria == "CAPM beta"){
-      knitr::kable(CAPM.beta(dt,edhec2[,"SPY"]))
+    
+    if ("CAPM beta" %in% input$criteria){
+      dataframe["CAPM beta",] = CAPM.beta(dt,edhec2[,"SPY"])
     }
-    else if(input$criteria == "Kurtosis"){
-      knitr::kable(kurtosis(dt))
+    
+    if ("Kurtosis" %in% input$criteria){
+      dataframe["Kurtosis",] = kurtosis(dt)
     }
-    else if(input$criteria == "Skewness"){
-      knitr::kable(skewness(dt))
+    if ("Skewness" %in% input$criteria){
+      dataframe["Skewness",] = skewness(dt)
     }
-    else if(input$criteria == "Calmar Ratio"){
-      knitr::kable(CalmarRatio(dt))
+    if ("Calmar Ratio" %in% input$criteria){
+      dataframe["Calmar Ratio",] = CalmarRatio(dt)
     }
-    else if(input$criteria == "Jensen’s alpha"){
-      knitr::kable(CAPM.alpha(dt,edhec2[,"SPY"]))
+    
+    if ("Jensen’s alpha" %in% input$criteria){
+      dataframe["Jensen’s alpha",] = CAPM.alpha(dt,edhec2[,"SPY"])
     }
-    else if(input$criteria == "Omega ratio"){
-      knitr::kable(Omega(dt,edhec2[,"SPY"]))
+    
+    if ("Omega ratio" %in% input$criteria){
+      dataframe["Omega ratio",] = Omega(dt,edhec2[,"SPY"])
     }
-    else if(input$criteria == "Bull beta"){
-      knitr::kable(CAPM.beta.bull(dt,edhec2[,"SPY"]))
+    
+    if ("Bull beta" %in% input$criteria){
+      dataframe["Bull beta",] = CAPM.beta.bull(dt,edhec2[,"SPY"])
     }
-    else if(input$criteria == "Bear beta"){
-      knitr::kable(CAPM.beta.bear(dt,edhec2[,"SPY"]))
+    
+    if ("Bear beta" %in% input$criteria){
+      dataframe["Bear beta",] = CAPM.beta.bear(dt,edhec2[,"SPY"])
     }
+    
+    knitr::kable(dataframe)
+    
+  })
+  
+  ######################
+  #####  Section 2
+  ######################
+  
+  ### Reset the time input if start == end
+  observeEvent(input$date_range,{
+    if(input$date_range[1] == input$date_range[2]){
+      updateSliderTextInput(session,"date_range",selected = c(date_choices[1],date_choices[length(date_choices)]))
+    }
+  })
+  
+  observeEvent(input$asset_sec1,{
+    data = hot_to_r(input$asset_sec1)
+    tickers = paste(data$Asset, sep = ",")
+    tickers = tickers[-which(tickers == "")]
+    updateSelectInput(session, 'ind', choices = tickers)
+    updateTextInput(session, 'downloadtxt', value = 'Click Download to download data')
+  })
+  
+  observeEvent(input$download, {
+    Settingup_port(input, output, session)
+  })
+  
+  ### Input for assets' tickers and parameters
+  
+  output$asset_sec1 <- renderRHandsontable({
+    DF = data.frame(
+      Asset= c("SPY", "AGG", "SLV", "LQD", rep("",26)),
+      stringsAsFactors = FALSE)
+    
+    colnames(DF) = c("Asset")
+    
+    rhandsontable(DF, width = 250, height = 300) %>%
+      hot_col("Asset", allowInvalid = TRUE)
+  })
+  
+  Settingup_port <- function(input, output, session){
+    withProgress(message = 'Downloading Data', value = 10, {
+      data = hot_to_r(input$asset_sec1)
+      tickers <<- paste(data$Asset, sep = ",")
+      tickers <<- tickers[-which(tickers == "")]
+      
+      init_date <<- input$date_range_sec1[1]
+      start_date <<- input$date_range_sec1[1]
+      end_date <<- input$date_range_sec1[2]
+      
+      for (i in 1:length(tickers)) {
+        sym = getSymbols(Symbols = tickers[i],
+                         from = start_date,
+                         to = end_date,
+                         auto.assign = FALSE)
+        
+        assign(tickers[i], sym, globalenv())
+      }
+    })
+    
+    withProgress(message = 'Constructing portfolio', value = 10, {
+      stock(tickers,
+            currency = "USD",
+            multiplier = 1)
+      
+      rm.strat(portfolio.st)
+      rm.strat(account.st)
+      rm.strat(strategy.st)
+      
+      initPortf(name = portfolio.st,
+                symbols = tickers,
+                initDate = init_date)
+      
+      initAcct(name = account.st,
+               portfolios = portfolio.st,
+               initDate = init_date,
+               initEq = init_equity)
+      
+      initOrders(portfolio = portfolio.st,
+                 symbols = tickers,
+                 initDate = init_date)
+      
+      strategy(strategy.st, store = TRUE)
+      
+      # SMA speed can be modified here
+      fastSMA <<- input$fastSMA
+      slowSMA <<- input$slowSMA
+      
+      add.indicator(strategy = strategy.st,
+                    name = "SMA",
+                    arguments = list(x = quote(Cl(mktdata)), 
+                                     n = fastSMA),
+                    label = "nFast")
+      add.indicator(strategy = strategy.st, 
+                    name = "SMA", 
+                    arguments = list(x = quote(Cl(mktdata)), 
+                                     n = slowSMA), 
+                    label = "nSlow")
+      
+      #### Change signals here ##########
+      add.signal(strategy = strategy.st,
+                 name="sigCrossover",
+                 arguments = list(columns = c("nFast", "nSlow"),
+                                  relationship = "gte"),
+                 label = "long")
+      add.signal(strategy = strategy.st,
+                 name="sigCrossover",
+                 arguments = list(columns = c("nFast", "nSlow"),
+                                  relationship = "lt"),
+                 label = "short")
+      
+      #### Change trade rules here for all assets ###########
+      # Trade sizes for long/short
+      tradeSize=init_equity/length(tickers) # allocate capital equally to trade strategies
+      longSize=shortSize=1
+      
+      add.rule(strategy = strategy.st,
+               name = "ruleSignal",
+               arguments = list(sigcol = "long",
+                                sigval = TRUE,
+                                orderqty = longSize,
+                                ordertype = "market",
+                                orderside = "long", 
+                                osFUN= IKTrading::osMaxDollar,
+                                tradeSize=tradeSize,
+                                maxSize=tradeSize,
+                                prefer = "High", 
+                                TxnFees = 0, 
+                                replace = FALSE),
+               type = "enter",
+               label = "EnterLONG",verbose=F)
+      # Exit Long Rule
+      add.rule(strategy.st, 
+               name = "ruleSignal", 
+               arguments = list(sigcol = "long", 
+                                sigval = TRUE, 
+                                orderside = "short", 
+                                ordertype = "market", 
+                                orderqty = "all", 
+                                TxnFees = 0, 
+                                replace = TRUE), 
+               type = "exit", 
+               label = "Exit2LONG")
+      #### SHORT rules
+      # Enter Short
+      add.rule(strategy.st,
+               name = "ruleSignal",
+               arguments = list(sigcol = "short",
+                                sigval = TRUE,
+                                orderqty = -shortSize,
+                                osFUN= IKTrading::osMaxDollar,
+                                tradeSize= -tradeSize,
+                                maxSize= -tradeSize,
+                                ordertype = "market",
+                                orderside = "short", 
+                                replace = FALSE, 
+                                TxnFees = 0, 
+                                prefer = "Low"),
+               type = "enter",
+               label = "EnterSHORT")
+      # Exit Short
+      add.rule(strategy.st, 
+               name = "ruleSignal", 
+               arguments = list(sigcol = "short", 
+                                sigval = TRUE, 
+                                orderside = "long", 
+                                ordertype = "market", 
+                                orderqty = "all", 
+                                TxnFees = 0, 
+                                replace = TRUE), 
+               type = "exit", 
+               label = "Exit2SHORT")
+      
+      results_file <<- paste("results", strategy.st, "RData", sep = ".")
+      if( file.exists(results_file) ) {
+        file.remove(results_file)}
+      results <<- applyStrategy(strategy.st, portfolios = portfolio.st,verbose=FALSE)
+      updatePortf(portfolio.st,verbose=F)
+      updateAcct(account.st)
+      updateEndEq(account.st)
+      
+      ### Now get Total Portfolio Results ####
+      final_acct <<- getAccount(account.st)
+      end_eq <<- final_acct$summary$End.Eq
+      returns <<- Return.calculate(end_eq, method="log")
+    })
+  }
+  
+  output$ind_summary <- renderPrint({
+    validate(need(input$update, "Click Analyze to get the result"))
+    input$update
+    isolate({
+      tstats <- tradeStats(portfolio.st)
+      knitr::kable(t(tstats))
+    })
+  })
+  
+  ### Plot data for section 2
+  output$bt_sec1 = renderPlot({
+    validate(need(input$update, "Click Analyze to get the result"))
+    input$update
+    isolate({
+      chart.Posn(portfolio.st, Symbol = input$ind, 
+                 TA = "add_SMA(n = fastSMA, col = 4); add_SMA(n = slowSMA, col = 2)")
+    })## isolate
+  })
+  
+  output$port_summary <- renderPrint({
+    validate(need(input$update, "Click Analyze to get the result"))
+    input$update
+    isolate({
+      tmp = rbind(SharpeRatio(returns,annualize=T),SortinoRatio(returns))
+      rbind(tmp, CalmarRatio(returns))
+    })
+  })
+  
+  ### Plot data for section 2
+  output$portf1 = renderPlot({
+    validate(need(input$update, "Click Analyze to get the result"))
+    input$update
+    isolate({
+      charts.PerformanceSummary(returns, colorset = bluefocus, main = "Strategy Performance")
+    })## isolate
   })
   
   

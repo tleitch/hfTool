@@ -13,6 +13,7 @@ library(DEoptim)
 library(quantmod)
 library(downloader)
 library(ahf)
+library(FinancialInstrument)
 
 
 shinyUI(dashboardPage(skin = "black" , 
@@ -64,22 +65,28 @@ shinyUI(dashboardPage(skin = "black" ,
                                   sidebarLayout(
                                     sidebarPanel(
                                       checkboxGroupInput("show_vars", "Columns:",
-                                                         names(edhec2), selected = names(edhec2)[1:6]),
-                                      sliderInput("year",
-                                                  "Select Viewing Years:",
-                                                  min = 1997,  max = 2019, value = c(2004,2012)),
+                                                         names(edhec2), selected = names(edhec2)[1:5]),
                                       
-                                      selectInput("criteria", "Assessment Criteria:",
-                                                  choices = c("Sharpe Ratio", "Sortino Ratio", "CAPM beta","Kurtosis",
-                                                              "Skewness","Calmar Ratio","Jensen’s alpha","Omega ratio","Bull beta","Bear beta"))
+                                      # sliderInput("year",
+                                      #             "Select Viewing Years:",
+                                      #             min = index(edhec2)[1],  max = index(edhec2)[nrow(edhec2)], value = c(index(edhec2)[100], index(edhec2)[nrow(edhec2)])),
+                                      
+                                      dateRangeInput('dateRange',
+                                                     label = "Select Viewing Years:",
+                                                     start = index(edhec2)[1], end = index(edhec2)[nrow(edhec2)]
+                                      ),
+
+                                      checkboxGroupInput("criteria", "Assessment Criteria:",
+                                                         c("Sharpe Ratio", "Sortino Ratio", "CAPM beta","Kurtosis",
+                                                           "Skewness","Calmar Ratio","Jensen’s alpha","Omega ratio","Bull beta","Bear beta"), 
+                                                         c("Sharpe Ratio", "Sortino Ratio", "CAPM beta","Kurtosis"))
                                     ),
                                     mainPanel(
                                       tabsetPanel(
                                         id = 'dataset',
-                                        tabPanel("edhec2", DT::dataTableOutput("mytable1"))
+                                        tabPanel("Select Data", DT::dataTableOutput("mytable1"))
                                       ),
-                                      
-                                      h4("Criteria Values"),
+                                      h4("Performance Measurements"),
                                       verbatimTextOutput("cvalues")
                                     )
                                   )
@@ -88,16 +95,35 @@ shinyUI(dashboardPage(skin = "black" ,
                           
                           #### Section 2
                           tabItem(tabName = "sec2",
-                                  fluidRow(column(12, h3("Rule Based Trading: Mean reversion"), align = "center")),
-                                  br(),br(),
-                                  # fluidRow(column(12, verbatimTextOutput("tttest"))
-                                  # ),
-                                  # fluidRow(column(12, verbatimTextOutput("tttest2"))
-                                  # ),
-                                  br(),
-
-                                  
-                                  br()
+                                  sidebarLayout(
+                                    fluidRow(column(12, h3("Rule Based Trading : Trend"), align = "center")),
+                                    column(12, h4("Construct your portfolio:"), align = "left")),
+                                  sidebarPanel(
+                                    rHandsontableOutput("asset_sec1"),
+                                    dateRangeInput(inputId = "date_range_sec1", label = h4("Time interval:"),
+                                                   start = date_choices[1], end = date_choices[length(date_choices)]),
+                                    
+                                    numericInput('fastSMA','fastSMA',10),
+                                    numericInput('slowSMA','slowSMA',30), 
+                                    actionBttn("download", label = "Construct", color = "primary"),
+                                    
+                                    selectInput('ind','Choose the asset you want to analyze', choices = NULL),
+                                    actionBttn("update", label = "Analyze", color = "primary"),width = 2
+                                  ),
+                                  mainPanel(
+                                    tabsetPanel(
+                                      tabPanel("Individual Asset Analysis",
+                                               plotOutput("bt_sec1"),
+                                               verbatimTextOutput('ind_summary'),
+                                               tags$head(tags$style("#ind_summary{color:black; font-size:12px;
+overflow-y:scroll; max-height: 350px; background: ghostwhite;}"))
+                                      ),
+                                      tabPanel("Portfolio Analysis", 
+                                               plotOutput("portf1"),
+                                               verbatimTextOutput('port_summary')
+                                      )
+                                    )
+                                  )
                           ),
                           
                           
