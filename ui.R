@@ -12,8 +12,8 @@ library(Rglpk)
 library(DEoptim)
 library(quantmod)
 library(downloader)
-# library(quantstrat)
-
+library(ahf)
+library(FinancialInstrument)
 
 
 shinyUI(dashboardPage(skin = "black" , 
@@ -21,12 +21,6 @@ shinyUI(dashboardPage(skin = "black" ,
                       
                       dashboardSidebar(
                         sidebarUserPanel("", img(src="carey.png",width="80%")),
-                        # mainPanel(
-                        #   tags$style(type="text/css",
-                        #              ".shiny-output-error { visibility: hidden; }",
-                        #              ".shiny-output-error:before { visibility: hidden; }"
-                        #   )
-                        # ),
                         br(),
                         sidebarMenu(
                           # menuItem("About", tabName = "about", icon = icon("book")),
@@ -67,78 +61,69 @@ shinyUI(dashboardPage(skin = "black" ,
                           
                           #### Section 1
                           tabItem(tabName = "sec1",
-                                  fluidRow(column(12, h3("Rule Based Trading : Trend"), align = "center")
-                                  ),
-                                  br(),br(),
-                                  fluidRow(
-                                    # column(1),
-                                    column(12, h4("Construct your portfolio:"), align = "left")),
-                                  br(),
-                                  
-                                  fluidRow(
-                                    # column(1),
-                                    column(7,
-                                           wellPanel(div(rHandsontableOutput("asset_sec1"))
-                                           )
+                                  headerPanel("Calculation of Performance Measures"),
+                                  sidebarLayout(
+                                    sidebarPanel(
+                                      checkboxGroupInput("show_vars", "Columns:",
+                                                         names(edhec2), selected = names(edhec2)[1:5]),
+                                      
+                                      # sliderInput("year",
+                                      #             "Select Viewing Years:",
+                                      #             min = index(edhec2)[1],  max = index(edhec2)[nrow(edhec2)], value = c(index(edhec2)[100], index(edhec2)[nrow(edhec2)])),
+                                      
+                                      dateRangeInput('dateRange',
+                                                     label = "Select Viewing Years:",
+                                                     start = index(edhec2)[1], end = index(edhec2)[nrow(edhec2)]
+                                      ),
+
+                                      checkboxGroupInput("criteria", "Assessment Criteria:",
+                                                         c("Sharpe Ratio", "Sortino Ratio", "CAPM beta","Kurtosis",
+                                                           "Skewness","Calmar Ratio","Jensen’s alpha","Omega ratio","Bull beta","Bear beta"), 
+                                                         c("Sharpe Ratio", "Sortino Ratio", "CAPM beta","Kurtosis"))
                                     ),
-                                    # column(1),
-                                    column(5,
-                                           h4("Some descriptions"),
-                                           br(),
-                                           p("All tickers from Yahoo finance and FRED are valid."),
-                                           br(),
-                                           p("fast and slow SMA are set to....."),
-                                           br(),
-                                           p("stop loss for long and short position are set to..."),
-                                           br(),
-                                           p("Click the botton below to fetch real-time data:"),
-                                           br(),
-                                           actionBttn("fetch_sec1", label = "FetchData", color = "primary"),
-                                           actionBttn("backtest_go", label = "Backtest", color = "primary")
-                                           
+                                    mainPanel(
+                                      tabsetPanel(
+                                        id = 'dataset',
+                                        tabPanel("Select Data", DT::dataTableOutput("mytable1"))
+                                      ),
+                                      h4("Performance Measurements"),
+                                      verbatimTextOutput("cvalues")
                                     )
-                                  ),
-                                  
-                                  fluidRow(column(12,
-                                                  # verbatimTextOutput("tttest"),
-                                                  div(sliderTextInput(
-                                                    inputId = "date_range_sec1", label = h4("Time interval:"), width = "80%",
-                                                    choices = date_choices, selected = range(date_choices),
-                                                    grid = TRUE, dragRange = FALSE
-                                                  ), align = "center"))
-                                  ),
-                                  br(),
-                                  # fluidRow(column(12, plotOutput("bt_sec1"))
-                                  #          ),
-                                  
-                                  
-                                  # fluidRow(column(12, verbatimTextOutput("tttest2"))
-                                  # ),
-                                  fluidRow(column(12, plotOutput("bt_sec1"))
-                                  ),
-                                  br(), br(),
-                                  fluidRow(
-                                    # column(1),
-                                    column(12, h4("Performance analysis for the entire portfolio and each asset inside:"), align = "left")),
-                                  br(),
-                                  fluidRow(column(12, rHandsontableOutput("performance_sec1"), align = "left")
-                                  ),
-                                  fluidRow()
+                                  )
                           ),
                           
                           
                           #### Section 2
                           tabItem(tabName = "sec2",
-                                  fluidRow(column(12, h3("Rule Based Trading: Mean reversion"), align = "center")),
-                                  br(),br(),
-                                  # fluidRow(column(12, verbatimTextOutput("tttest"))
-                                  # ),
-                                  # fluidRow(column(12, verbatimTextOutput("tttest2"))
-                                  # ),
-                                  br(),
-
-                                  
-                                  br()
+                                  sidebarLayout(
+                                    fluidRow(column(12, h3("Rule Based Trading : Trend"), align = "center")),
+                                    column(12, h4("Construct your portfolio:"), align = "left")),
+                                  sidebarPanel(
+                                    rHandsontableOutput("asset_sec1"),
+                                    dateRangeInput(inputId = "date_range_sec1", label = h4("Time interval:"),
+                                                   start = date_choices[1], end = date_choices[length(date_choices)]),
+                                    
+                                    numericInput('fastSMA','fastSMA',10),
+                                    numericInput('slowSMA','slowSMA',30), 
+                                    actionBttn("download", label = "Construct", color = "primary"),
+                                    
+                                    selectInput('ind','Choose the asset you want to analyze', choices = NULL),
+                                    actionBttn("update", label = "Analyze", color = "primary"),width = 2
+                                  ),
+                                  mainPanel(
+                                    tabsetPanel(
+                                      tabPanel("Individual Asset Analysis",
+                                               plotOutput("bt_sec1"),
+                                               verbatimTextOutput('ind_summary'),
+                                               tags$head(tags$style("#ind_summary{color:black; font-size:12px;
+overflow-y:scroll; max-height: 350px; background: ghostwhite;}"))
+                                      ),
+                                      tabPanel("Portfolio Analysis", 
+                                               plotOutput("portf1"),
+                                               verbatimTextOutput('port_summary')
+                                      )
+                                    )
+                                  )
                           ),
                           
                           
