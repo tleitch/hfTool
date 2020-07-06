@@ -23,14 +23,15 @@ shinyServer(function(input, output, session){
   
   output$asset_sec1 <- renderRHandsontable({
     DF = data.frame(
-      Asset= c("SPY", "AGG", "SHV", "LQD", rep("",26)),
-      fastSMA = c(15,16,17,18,rep("",26)),
-      slowSMA = c(45,46,47,48,rep("",26)),
-      stopLimLong = c(4,5,6,7,rep("",26)),
-      stopLimShort = c(1.5,2,3,4,rep("",26)),
+      Asset= c("SPY", "AGG", "SOYB", "LQD", rep("",26)),
+      Allocation=c(20,30,15,35,rep("",26)),
+      fastSMA = c(9,11,13,12,rep("",26)),
+      slowSMA = c(30,25,27,33,rep("",26)),
+      stopLimLong = c(2,2,3,3,rep("",26)),
+      stopLimShort = c(2,3,2,4,rep("",26)),
       stringsAsFactors = FALSE)
     
-    colnames(DF) = c("Asset", "Fast_Moving_Average", "Slow_Moving_Average", "Stop_Loss_Long(%)", "Stop_Loss_Short(%)")
+    colnames(DF) = c("Asset", "Allocation","Fast_Moving_Average", "Slow_Moving_Average", "Stop_Loss_Long(%)", "Stop_Loss_Short(%)")
     
     rhandsontable(DF, width = 700, height = 300) %>%
       hot_col("Asset", allowInvalid = TRUE)
@@ -41,43 +42,49 @@ shinyServer(function(input, output, session){
   
   fetchdata_sec1 <- reactive({
     if(input$fetch_sec1==0){return()} #confirming button click
-    # input$fetch_sec1
-    # data = hot_to_r(input$asset_sec1)
-    # tickers = paste(data$Asset, sep = ",")
-    # tickers
+    print("here 2")
     isolate({
       input$fetch_sec1
       
       data = hot_to_r(input$asset_sec1)
       tickers = paste(data$Asset, sep = ",")
       tickers = tickers[-which(tickers == "")]
+      print("here")
+      print(tickers)
       
       init_date = input$date_range_sec1[1]
       start_date = input$date_range_sec1[1]
       end_date = input$date_range_sec1[2]
-      # init_date = "2014-01-01"
-      # start_date = "2014-01-01"
-      # end_date = "2019-07-12"
       x = list()
       for (i in 1:length(tickers)) {
         x[[i]] = getSymbols(Symbols = tickers[i], 
                             src = "yahoo", 
-                            index.class = "POSIXct",
-                            from = start_date, 
-                            to = end_date, 
-                            auto.assign = FALSE,
-                            env = stockData,
-                            adjust = TRUE)
-        # getSymbols(i, env = .GlobalEnv, from = "1999-12-31")
+                             index.class = "POSIXct",
+                             from = start_date, 
+                             to = end_date, 
+                             auto.assign = FALSE,
+                             env = NULL,
+                             adjust = TRUE)
+       tmp=OHLC(x[[i]])
+        print(head(tmp))
       }
     })
-    # Data = get(tickers[1], stockData)
-    # test = cta_one_shot(tickers[1], 15, 45, .04, .015)
+
     return(x)
     
   })
   
   ### get the log return for each asset
+  output$tickers<-NULL
+  
+  output$symSelector<- renderUI({
+    #selectInput("variable1", "Choose Option:", as.list(camps)) 
+    data = hot_to_r(input$asset_sec1)
+    tickers = paste(data$Asset, sep = ",")
+    tmp2del = which(tickers == "")
+    tickers = tickers[-tmp2del]
+    selectInput("sym", "Choose a dataset:",choices = tickers,selected=tickers[2])
+  })
   
   backtest_sec1 <- reactive({
     input$backtest_go
@@ -86,42 +93,70 @@ shinyServer(function(input, output, session){
       tickers = paste(data$Asset, sep = ",")
       tmp2del = which(tickers == "")
       tickers = tickers[-tmp2del]
+      print(tickers)
       data = data[-tmp2del,]
+      print(data)
       stockPool = fetchdata_sec1()
+      print(head(stockPool))
       
       CTAreturn = xts()
       for (i in 1:(dim(data)[1])) {
         tmpReturn = cta_one_shot(data[i,1],
-                                 as.numeric(data[i,2]),
                                  as.numeric(data[i,3]),
-                                 as.numeric(data[i,4])/100,
+                                 as.numeric(data[i,4]),
                                  as.numeric(data[i,5])/100,
+                                 as.numeric(data[i,6])/100,
                                  stockPool[[i]],
+                                 init_equity = as.numeric(data[i,2])*1000000,
                                  init_date = input$date_range_sec1[1],
                                  start_date = input$date_range_sec1[1],
                                  end_date = input$date_range_sec1[2])
         colnames(tmpReturn) = data[i,1]
-        CTAreturn = cbind(CTAreturn, tmpReturn)
+        CTAreturn = cbind(CTAreturn, tmpReturn*as.numeric(data[i,2])/sum(as.numeric(data[,2])))
       }
-      # CTAreturn = CTAreturn[,-1]
-      # CTAreturn = list()
-      # CTAreturn = cta_one_shot(data[1,1], as.numeric(data[1,2]), as.numeric(data[1,3]),
-      #                        as.numeric(data[1,4])/100, as.numeric(data[1,5])/100)
-      # returns2 = cta_one_shot(data[2,1], as.numeric(data[2,2]), as.numeric(data[2,3]),
-      #                        as.numeric(data[2,4])/100, as.numeric(data[2,5])/100)
-      # tmp = cbind(CTAreturn, returns, returns2)
     })
     return(CTAreturn)
-    # if(is.null(input$asset_sec1)) {
-    #   return()
-    # } else {
-    #   return(CTAreturn)
-    # }
+
+  })
+  
+
+  
+  backtestAsset_sec1 <- reactive({
+    input$backtest_go
+    isolate({
+      data = hot_to_r(input$asset_sec1)
+      tickers = paste(data$Asset, sep = ",")
+      tmp2del = which(tickers == "")
+      tickers = tickers[-tmp2del]
+      data = data[-tmp2del,]
+      print(data)
+      stockPool = fetchdata_sec1()
+      
+      SYMreturn = xts()
+      i=which(input$sym==tickers)
+      tmpReturn = cta_one_shot(data[i,1],
+                                 as.numeric(data[i,3]),
+                                 as.numeric(data[i,4]),
+                                 as.numeric(data[i,5])/100,
+                                 as.numeric(data[i,6])/100,
+                                 stockPool[[i]],
+                                 init_equity = as.numeric(data[i,2])*1000000,
+                                 init_date = input$date_range_sec1[1],
+                                 start_date = input$date_range_sec1[1],
+                                 end_date = input$date_range_sec1[2])
+      colnames(tmpReturn) = data[i,1]
+     # SYMreturn = cbind(SYMreturn, tmpReturn)
+
+
+    })
+    return(tmpReturn)
+    
   })
   
   
   pureTest <- reactive({
     if(input$fetch_sec1==0){return()} #confirming button click
+    print("here 1")
     isolate({
       input$fetch_sec1
       data = hot_to_r(input$asset_sec1)
@@ -157,6 +192,20 @@ shinyServer(function(input, output, session){
     #   return(NULL)
     # }
   })
+  
+  output$btAsset_sec1 = renderPlot({
+    validate(need(input$backtest_go, "")
+             
+    )
+    input$backtest_go
+    isolate({
+      CTAreturns = backtestAsset_sec1()
+      portfolioReturns = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
+      charts.PerformanceSummary(portfolioReturns, colorset = rich6equal,
+                                main = paste("Strategy Performance",colnames(CTAreturns[1])), legend.loc = "bottomleft", cex.legend=1.15)
+  })
+  })
+  
   
   ### generate summary table to compare performance
   
@@ -264,7 +313,7 @@ shinyServer(function(input, output, session){
                    index.class = "POSIXct",
                    from = start_date, 
                    to = end_date, 
-                   auto.assign = TRUE,
+                   auto.assign = F,
                    env = stockData,
                    adjust = TRUE)
         # getSymbols(i, env = .GlobalEnv, from = "1999-12-31")

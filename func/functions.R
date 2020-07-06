@@ -62,9 +62,10 @@ cta_one_shot <- function(symbolsCTA, fastSMA, slowSMA,
                          init_equity = 10000000,
                          portfolio.st = "Port.Luxor",
                          account.st = "Acct.Luxor",
-                         strategy.st = "Strat.Luxor") {
+                         strategy.st = "Strat.Luxor")
+  {
   
-  tradeSize = init_equity/length(symbolsCTA)
+  tradeSize = init_equity
   
   osFixedDollar <- function(timestamp,orderqty, portfolio, symbol, ruletype, ...)
   {
@@ -287,6 +288,8 @@ cta_one_shot <- function(symbolsCTA, fastSMA, slowSMA,
   final_acct <- getAccount(account.st)
   end_eq <- final_acct$summary$End.Eq
   returns <- Return.calculate(end_eq, method="discrete")
+
+
   
   ### Save returns as CTAreturns to remember below
   CTAreturns<- Return.calculate(end_eq, method="log")

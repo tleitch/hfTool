@@ -72,7 +72,8 @@ shinyUI(dashboardPage(skin = "black" ,
                                   br(),br(),
                                   fluidRow(
                                     # column(1),
-                                    column(12, h4("Construct your portfolio:"), align = "left")),
+                                    column(8, h4("Construct your portfolio:"), align = "left"),
+                                  actionBttn("fetch_sec1", label = "Initialize", color = "primary")),
                                   br(),
                                   
                                   fluidRow(
@@ -92,8 +93,7 @@ shinyUI(dashboardPage(skin = "black" ,
                                            p("stop loss for long and short position are set to..."),
                                            br(),
                                            p("Click the botton below to fetch real-time data:"),
-                                           br(),
-                                           actionBttn("fetch_sec1", label = "FetchData", color = "primary"),
+                                           br(),br(),br(),br(),
                                            actionBttn("backtest_go", label = "Backtest", color = "primary")
                                            
                                     )
@@ -114,16 +114,15 @@ shinyUI(dashboardPage(skin = "black" ,
                                   
                                   # fluidRow(column(12, verbatimTextOutput("tttest2"))
                                   # ),
-                                  fluidRow(column(12, plotOutput("bt_sec1"))
+                                  fluidRow(column(12, plotOutput("btAsset_sec1"))
                                   ),
                                   br(), br(),
                                   fluidRow(
                                     # column(1),
                                     column(12, h4("Performance analysis for the entire portfolio and each asset inside:"), align = "left")),
                                   br(),
-                                  fluidRow(column(12, rHandsontableOutput("performance_sec1"), align = "left")
-                                  ),
-                                  fluidRow()
+                                  fluidRow(column(8, rHandsontableOutput("performance_sec1"), align = "left") ,column(4,uiOutput("symSelector"))),
+                                           fluidRow(column(12, plotOutput("bt_sec1")))
                           ),
                           
                           
@@ -270,10 +269,6 @@ shinyUI(dashboardPage(skin = "black" ,
                           tabItem(tabName = "sec5",
                                   fluidRow(column(12, h3("Portfolio Analaytics"), align = "center")),
                                   br(),br(),
-                                  # fluidRow(column(12, verbatimTextOutput("tttest"))
-                                  # ),
-                                  # fluidRow(column(12, verbatimTextOutput("tttest2"))
-                                  # ),
                                   br(),br(),br(),br(),
                                   fluidRow(column(2),
                                            column(10, rHandsontableOutput("performance_sec5"), align = "left", style = "font-size:100%")
