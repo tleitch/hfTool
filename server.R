@@ -1,9 +1,6 @@
 source('./func/functions.R')
 library(quantmod)
-library(ahf)
 library(tibble)
-library(quantstrat)
-library(FinancialInstrument)
 
 
 shinyServer(function(input, output, session){
@@ -14,279 +11,224 @@ shinyServer(function(input, output, session){
   #####  Section 1
   ######################
   
-  # choose columns to display
-  output$mytable1 <- DT::renderDataTable(
-    data.frame(edhec2[paste(input$dateRange,collapse = '/') , input$show_vars, drop = FALSE]),
-    options = list(scrollX = TRUE)
-  )
-  
-  output$cvalues <- renderPrint({
-    dt = edhec2[paste(input$dateRange,collapse = '/') , input$show_vars, drop = FALSE]
-    dataframe = data.frame(matrix(ncol = length(input$show_vars), nrow = 0))
-    names(dataframe) = input$show_vars
-    
-    if ("Sharpe Ratio" %in% input$criteria){
-      dataframe["Sharpe Ratio",] = SharpeRatio(dt)
-    }
-    
-    if ("Sortino Ratio" %in% input$criteria){
-      dataframe["Sortino Ratio",] = SortinoRatio(dt)
-    }
-    
-    if ("CAPM beta" %in% input$criteria){
-      dataframe["CAPM beta",] = CAPM.beta(dt,edhec2[,"SPY"])
-    }
-    
-    if ("Kurtosis" %in% input$criteria){
-      dataframe["Kurtosis",] = kurtosis(dt)
-    }
-    if ("Skewness" %in% input$criteria){
-      dataframe["Skewness",] = skewness(dt)
-    }
-    if ("Calmar Ratio" %in% input$criteria){
-      dataframe["Calmar Ratio",] = CalmarRatio(dt)
-    }
-    
-    if ("Jensen’s alpha" %in% input$criteria){
-      dataframe["Jensen’s alpha",] = CAPM.alpha(dt,edhec2[,"SPY"])
-    }
-    
-    if ("Omega ratio" %in% input$criteria){
-      dataframe["Omega ratio",] = Omega(dt,edhec2[,"SPY"])
-    }
-    
-    if ("Bull beta" %in% input$criteria){
-      dataframe["Bull beta",] = CAPM.beta.bull(dt,edhec2[,"SPY"])
-    }
-    
-    if ("Bear beta" %in% input$criteria){
-      dataframe["Bear beta",] = CAPM.beta.bear(dt,edhec2[,"SPY"])
-    }
-    
-    knitr::kable(dataframe)
-    
-  })
-  
-  ######################
-  #####  Section 2
-  ######################
-  
   ### Reset the time input if start == end
+  
   observeEvent(input$date_range,{
     if(input$date_range[1] == input$date_range[2]){
       updateSliderTextInput(session,"date_range",selected = c(date_choices[1],date_choices[length(date_choices)]))
     }
   })
   
-  observeEvent(input$asset_sec1,{
-    data = hot_to_r(input$asset_sec1)
-    tickers = paste(data$Asset, sep = ",")
-    tickers = tickers[-which(tickers == "")]
-    updateSelectInput(session, 'ind', choices = tickers)
-    updateTextInput(session, 'downloadtxt', value = 'Click Download to download data')
-  })
-  
-  observeEvent(input$download, {
-    Settingup_port(input, output, session)
-  })
-  
   ### Input for assets' tickers and parameters
   
   output$asset_sec1 <- renderRHandsontable({
     DF = data.frame(
-      Asset= c("SPY", "AGG", "SLV", "LQD", rep("",26)),
+      Asset= c("SPY", "AGG", "SOYB", "LQD", rep("",26)),
+      Allocation=c(20,30,15,35,rep("",26)),
+      fastSMA = c(9,11,13,12,rep("",26)),
+      slowSMA = c(30,25,27,33,rep("",26)),
+      stopLimLong = c(2,2,3,3,rep("",26)),
+      stopLimShort = c(2,3,2,4,rep("",26)),
       stringsAsFactors = FALSE)
     
-    colnames(DF) = c("Asset")
+    colnames(DF) = c("Asset", "Allocation","Fast_Moving_Average", "Slow_Moving_Average", "Stop_Loss_Long(%)", "Stop_Loss_Short(%)")
     
-    rhandsontable(DF, width = 250, height = 300) %>%
+    rhandsontable(DF, width = 700, height = 300) %>%
       hot_col("Asset", allowInvalid = TRUE)
   })
   
-  Settingup_port <- function(input, output, session){
-    withProgress(message = 'Downloading Data', value = 10, {
+  
+  ### Fetch data for section 1
+  
+  fetchdata_sec1 <- reactive({
+    if(input$fetch_sec1==0){return()} #confirming button click
+    print("here 2")
+    isolate({
+      input$fetch_sec1
+      
       data = hot_to_r(input$asset_sec1)
-      tickers <<- paste(data$Asset, sep = ",")
-      tickers <<- tickers[-which(tickers == "")]
+      tickers = paste(data$Asset, sep = ",")
+      tickers = tickers[-which(tickers == "")]
+      print("here")
+      print(tickers)
       
-      init_date <<- input$date_range_sec1[1]
-      start_date <<- input$date_range_sec1[1]
-      end_date <<- input$date_range_sec1[2]
-      
+      init_date = input$date_range_sec1[1]
+      start_date = input$date_range_sec1[1]
+      end_date = input$date_range_sec1[2]
+      x = list()
       for (i in 1:length(tickers)) {
-        sym = getSymbols(Symbols = tickers[i],
-                         from = start_date,
-                         to = end_date,
-                         auto.assign = FALSE)
-        
-        assign(tickers[i], sym, globalenv())
+        x[[i]] = getSymbols(Symbols = tickers[i], 
+                            src = "yahoo", 
+                            index.class = "POSIXct",
+                            from = start_date, 
+                            to = end_date, 
+                            auto.assign = FALSE,
+                            env = NULL,
+                            adjust = TRUE)
+        tmp=OHLC(x[[i]])
+        print(head(tmp))
       }
     })
     
-    withProgress(message = 'Constructing portfolio', value = 10, {
-      stock(tickers,
-            currency = "USD",
-            multiplier = 1)
-      
-      rm.strat(portfolio.st)
-      rm.strat(account.st)
-      rm.strat(strategy.st)
-      
-      initPortf(name = portfolio.st,
-                symbols = tickers,
-                initDate = init_date)
-      
-      initAcct(name = account.st,
-               portfolios = portfolio.st,
-               initDate = init_date,
-               initEq = init_equity)
-      
-      initOrders(portfolio = portfolio.st,
-                 symbols = tickers,
-                 initDate = init_date)
-      
-      strategy(strategy.st, store = TRUE)
-      
-      # SMA speed can be modified here
-      fastSMA <<- input$fastSMA
-      slowSMA <<- input$slowSMA
-      
-      add.indicator(strategy = strategy.st,
-                    name = "SMA",
-                    arguments = list(x = quote(Cl(mktdata)), 
-                                     n = fastSMA),
-                    label = "nFast")
-      add.indicator(strategy = strategy.st, 
-                    name = "SMA", 
-                    arguments = list(x = quote(Cl(mktdata)), 
-                                     n = slowSMA), 
-                    label = "nSlow")
-      
-      #### Change signals here ##########
-      add.signal(strategy = strategy.st,
-                 name="sigCrossover",
-                 arguments = list(columns = c("nFast", "nSlow"),
-                                  relationship = "gte"),
-                 label = "long")
-      add.signal(strategy = strategy.st,
-                 name="sigCrossover",
-                 arguments = list(columns = c("nFast", "nSlow"),
-                                  relationship = "lt"),
-                 label = "short")
-      
-      #### Change trade rules here for all assets ###########
-      # Trade sizes for long/short
-      tradeSize=init_equity/length(tickers) # allocate capital equally to trade strategies
-      longSize=shortSize=1
-      
-      add.rule(strategy = strategy.st,
-               name = "ruleSignal",
-               arguments = list(sigcol = "long",
-                                sigval = TRUE,
-                                orderqty = longSize,
-                                ordertype = "market",
-                                orderside = "long", 
-                                osFUN= IKTrading::osMaxDollar,
-                                tradeSize=tradeSize,
-                                maxSize=tradeSize,
-                                prefer = "High", 
-                                TxnFees = 0, 
-                                replace = FALSE),
-               type = "enter",
-               label = "EnterLONG",verbose=F)
-      # Exit Long Rule
-      add.rule(strategy.st, 
-               name = "ruleSignal", 
-               arguments = list(sigcol = "long", 
-                                sigval = TRUE, 
-                                orderside = "short", 
-                                ordertype = "market", 
-                                orderqty = "all", 
-                                TxnFees = 0, 
-                                replace = TRUE), 
-               type = "exit", 
-               label = "Exit2LONG")
-      #### SHORT rules
-      # Enter Short
-      add.rule(strategy.st,
-               name = "ruleSignal",
-               arguments = list(sigcol = "short",
-                                sigval = TRUE,
-                                orderqty = -shortSize,
-                                osFUN= IKTrading::osMaxDollar,
-                                tradeSize= -tradeSize,
-                                maxSize= -tradeSize,
-                                ordertype = "market",
-                                orderside = "short", 
-                                replace = FALSE, 
-                                TxnFees = 0, 
-                                prefer = "Low"),
-               type = "enter",
-               label = "EnterSHORT")
-      # Exit Short
-      add.rule(strategy.st, 
-               name = "ruleSignal", 
-               arguments = list(sigcol = "short", 
-                                sigval = TRUE, 
-                                orderside = "long", 
-                                ordertype = "market", 
-                                orderqty = "all", 
-                                TxnFees = 0, 
-                                replace = TRUE), 
-               type = "exit", 
-               label = "Exit2SHORT")
-      
-      results_file <<- paste("results", strategy.st, "RData", sep = ".")
-      if( file.exists(results_file) ) {
-        file.remove(results_file)}
-      results <<- applyStrategy(strategy.st, portfolios = portfolio.st,verbose=FALSE)
-      updatePortf(portfolio.st,verbose=F)
-      updateAcct(account.st)
-      updateEndEq(account.st)
-      
-      ### Now get Total Portfolio Results ####
-      final_acct <<- getAccount(account.st)
-      end_eq <<- final_acct$summary$End.Eq
-      returns <<- Return.calculate(end_eq, method="log")
-    })
-  }
-  
-  output$ind_summary <- renderPrint({
-    validate(need(input$update, "Click Analyze to get the result"))
-    input$update
-    isolate({
-      tstats <- tradeStats(portfolio.st)
-      knitr::kable(t(tstats))
-    })
+    return(x)
+    
   })
   
-  ### Plot data for section 2
+  ### get the log return for each asset
+  output$tickers<-NULL
+  
+  output$symSelector<- renderUI({
+    #selectInput("variable1", "Choose Option:", as.list(camps)) 
+    data = hot_to_r(input$asset_sec1)
+    tickers = paste(data$Asset, sep = ",")
+    tmp2del = which(tickers == "")
+    tickers = tickers[-tmp2del]
+    selectInput("sym", "Choose a dataset:",choices = tickers,selected=tickers[2])
+  })
+  
+  backtest_sec1 <- reactive({
+    input$backtest_go
+    isolate({
+      data = hot_to_r(input$asset_sec1)
+      tickers = paste(data$Asset, sep = ",")
+      tmp2del = which(tickers == "")
+      tickers = tickers[-tmp2del]
+      print(tickers)
+      data = data[-tmp2del,]
+      print(data)
+      stockPool = fetchdata_sec1()
+      print(head(stockPool))
+      
+      CTAreturn = xts()
+      for (i in 1:(dim(data)[1])) {
+        tmpReturn = cta_one_shot(data[i,1],
+                                 as.numeric(data[i,3]),
+                                 as.numeric(data[i,4]),
+                                 as.numeric(data[i,5])/100,
+                                 as.numeric(data[i,6])/100,
+                                 stockPool[[i]],
+                                 init_equity = as.numeric(data[i,2])*1000000,
+                                 init_date = input$date_range_sec1[1],
+                                 start_date = input$date_range_sec1[1],
+                                 end_date = input$date_range_sec1[2])
+        colnames(tmpReturn) = data[i,1]
+        CTAreturn = cbind(CTAreturn, tmpReturn*as.numeric(data[i,2])/sum(as.numeric(data[,2])))
+      }
+    })
+    return(CTAreturn)
+    
+  })
+  
+  
+  
+  backtestAsset_sec1 <- reactive({
+    input$backtest_go
+    isolate({
+      data = hot_to_r(input$asset_sec1)
+      tickers = paste(data$Asset, sep = ",")
+      tmp2del = which(tickers == "")
+      tickers = tickers[-tmp2del]
+      data = data[-tmp2del,]
+      print(data)
+      stockPool = fetchdata_sec1()
+      
+      SYMreturn = xts()
+      i=which(input$sym==tickers)
+      tmpReturn = cta_one_shot(data[i,1],
+                               as.numeric(data[i,3]),
+                               as.numeric(data[i,4]),
+                               as.numeric(data[i,5])/100,
+                               as.numeric(data[i,6])/100,
+                               stockPool[[i]],
+                               init_equity = as.numeric(data[i,2])*1000000,
+                               init_date = input$date_range_sec1[1],
+                               start_date = input$date_range_sec1[1],
+                               end_date = input$date_range_sec1[2])
+      colnames(tmpReturn) = data[i,1]
+      # SYMreturn = cbind(SYMreturn, tmpReturn)
+      
+      
+    })
+    return(tmpReturn)
+    
+  })
+  
+  
+  pureTest <- reactive({
+    if(input$fetch_sec1==0){return()} #confirming button click
+    print("here 1")
+    isolate({
+      input$fetch_sec1
+      data = hot_to_r(input$asset_sec1)
+      tickers = paste(data$Asset, sep = ",")
+      Data = get(tickers[1], stockData)
+      Data
+    })
+    
+  })
+  # fetchdata_sec1
+  # output$tttest = renderPrint(fetchdata_sec1()[[2]])
+  # output$tttest2 = renderPrint(backtest_sec1()[1:5,])
+  
+  # output$tttest2 = renderPrint(backtest_sec1()[(dim(backtest_sec1())[1]),])
+  
+  ### graph the backtest result
+  
   output$bt_sec1 = renderPlot({
-    validate(need(input$update, "Click Analyze to get the result"))
-    input$update
+    validate(need(input$backtest_go, "")
+             
+    )
+    input$backtest_go
     isolate({
-      chart.Posn(portfolio.st, Symbol = input$ind, 
-                 TA = "add_SMA(n = fastSMA, col = 4); add_SMA(n = slowSMA, col = 2)")
-    })## isolate
+      CTAreturns = backtest_sec1()
+      portfolioReturns = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
+      charts.PerformanceSummary(portfolioReturns, colorset = rich6equal,
+                                main = "Strategy Performance", legend.loc = "bottomleft", cex.legend=1.15)
+      # charts.PerformanceSummary(CTAreturns, colorset = rich6equal,ylim = c(min(CTAreturns), max(CTAreturns)),
+      #                           main = "Strategy Performance", legend.loc = "bottomleft", cex.legend=1.15)
+      
+    })
+    # if(is.null(CTAreturns)) {
+    #   return(NULL)
+    # }
   })
   
-  output$port_summary <- renderPrint({
-    validate(need(input$update, "Click Analyze to get the result"))
-    input$update
+  output$btAsset_sec1 = renderPlot({
+    validate(need(input$backtest_go, "")
+             
+    )
+    input$backtest_go
     isolate({
-      tmp = rbind(SharpeRatio(returns,annualize=T),SortinoRatio(returns))
-      rbind(tmp, CalmarRatio(returns))
+      CTAreturns = backtestAsset_sec1()
+      portfolioReturns = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
+      charts.PerformanceSummary(portfolioReturns, colorset = rich6equal,
+                                main = paste("Strategy Performance",colnames(CTAreturns[1])), legend.loc = "bottomleft", cex.legend=1.15)
     })
   })
   
-  ### Plot data for section 2
-  output$portf1 = renderPlot({
-    validate(need(input$update, "Click Analyze to get the result"))
-    input$update
+  
+  ### generate summary table to compare performance
+  
+  output$performance_sec1 <- renderRHandsontable({
+    input$backtest_go
     isolate({
-      charts.PerformanceSummary(returns, colorset = bluefocus, main = "Strategy Performance")
-    })## isolate
+      CTAreturns = backtest_sec1()
+      if (dim(CTAreturns)[2] == 1) {
+        sumTable = performanceSummary(CTAreturns)
+      } else {
+        Portfolio = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
+        CTAreturns = cbind(Portfolio, CTAreturns)
+        sumTable = multiPerformance(CTAreturns)
+      }
+      sumTable = sumTable %>% rownames_to_column("Performance Analysis")
+      rhandsontable(sumTable,
+                    # width = 800, height = 300,
+                    readOnly = TRUE) %>%
+        hot_table(highlightRow = TRUE)
+      
+    })
   })
+  
   
   
   ######################
@@ -355,8 +297,10 @@ shinyServer(function(input, output, session){
       input$fetch_sec3
       
       data = hot_to_r(input$asset_sec3)
-      tickers = paste(data$Asset, sep = ",")
+      tickers = paste(data$Asset, sep = ",")    
       tickers = tickers[-which(tickers == "")]
+      
+      tickers_global <<- tickers
       
       init_date = input$date_range_sec3[1]
       start_date = input$date_range_sec3[1]
@@ -371,8 +315,8 @@ shinyServer(function(input, output, session){
                    index.class = "POSIXct",
                    from = start_date, 
                    to = end_date, 
-                   auto.assign = TRUE,
                    env = stockData,
+                   auto.assign = TRUE,
                    adjust = TRUE)
         # getSymbols(i, env = .GlobalEnv, from = "1999-12-31")
         # x[[i]] = ClCl(get(tickers[i]))[clRange]
@@ -410,9 +354,21 @@ shinyServer(function(input, output, session){
       factorData = factorDataGlobal[,sel] # only get needed factors
       
       factorCoefs=data.frame()
-      rets=data.frame()
+      
+      i = 1
+      clcl = clclData[[i]]
+      idx=intersect(as.Date(index(clcl)),as.Date(index(factorData)))
+      fit=lm(clcl[as.Date(idx)]~factorData[as.Date(idx)])
+      tmp = as.matrix(fit$coefficients)
+      tmp[1] = tickers[i]
+      tmp = as.data.frame(t(tmp))
+      colnames(tmp) = c("Asset", colnames(factorData))
+      factorCoefs=rbind(factorCoefs, tmp)
+      rets = clcl
+      colnames(rets)=c(colnames(rets[,-ncol(rets)]),tickers[i])
+      
       # rets = xts()
-      for(i in (1:length(tickers))){
+      for(i in (2:length(tickers))){
         clcl = clclData[[i]]
         idx=intersect(as.Date(index(clcl)),as.Date(index(factorData)))
         fit=lm(clcl[as.Date(idx)]~factorData[as.Date(idx)])
@@ -482,10 +438,10 @@ shinyServer(function(input, output, session){
       
       # Use ROI instead of pso optimizer because it is faster and more stable.
       # Optimization here will only consider period when there is no missing data.
-      opta <- optimize.portfolio(R=rets[complete.cases(rets)], portfolio=pspec,
-                                 constraints=list(lev_constr, lo_constr, pl_constr,exp_constr),
-                                 objectives=list(ret_obj,var_obj), trace=FALSE,maxSR=TRUE,
-                                 optimize_method="ROI",verbose = FALSE)
+      opta <<- optimize.portfolio(R=rets[complete.cases(rets)], portfolio=pspec,
+                                  constraints=list(lev_constr, lo_constr, pl_constr,exp_constr),
+                                  objectives=list(ret_obj,var_obj), trace=FALSE,maxSR=TRUE,
+                                  optimize_method="ROI",verbose = FALSE)
       
       wgts = opta$weights
       
@@ -504,7 +460,17 @@ shinyServer(function(input, output, session){
     isolate({
       portfolioReturns = factorOpt()
       charts.PerformanceSummary(portfolioReturns, colorset = rich6equal,
-                                main = "Strategy Performance", legend.loc = "bottomleft", cex.legend=1.15)
+                                main = paste("Strategy Performance of", paste(factor3table$factors[input$factors_sec3_rows_selected,1], collapse = " / ")), legend.loc = "bottomleft", cex.legend=1.15)
+    })
+  })
+  
+  output$weight_table = renderTable({
+    validate(need(input$backtest_go3, "")
+             
+    )
+    input$backtest_go3
+    isolate({
+      t = cbind(Asset = tickers_global, Weight = opta$weights)
     })
   })
   
@@ -562,7 +528,7 @@ shinyServer(function(input, output, session){
     input$backtest_go4
     
     isolate({
-
+      
       # 
       # CTAreturns = backtest_sec1()
       # Portfolio = xts(apply(CTAreturns, 1, mean), order.by = index(CTAreturns))
@@ -585,10 +551,10 @@ shinyServer(function(input, output, session){
         tmp
       }, error = function(e)
         data.frame(Section_1 = matrix(0,11,1)))
-
+      
       sumTable = cbind(sumTable, tmp)[,1:2]
       colnames(sumTable) = c("x", "Section_1")
-
+      
       # sumTable = sumTable[,-1]
       # sumTable = sumTable[,-1]
       # sec1Ret = sumTable$Portfolio
@@ -598,11 +564,11 @@ shinyServer(function(input, output, session){
       # colnames(sec3Returns) = "Section 3"
       sec3Ret = tryCatch(finalPerformance(factorOpt(), "Section_3"), error = function(e)
         data.frame(Section_3 = matrix(0,11,1))
-        )
+      )
       sec4Ret = tryCatch(finalPerformance(backtest_sec4(), "Section_4"), error = function(e) 
         data.frame(Section_4 = matrix(0,11,1))
       )
-
+      
       # sec4Returns = backtest_sec4()
       # colnames(sec4Returns) = "Section 4"
       # sec4Ret = performanceSummary(sec4Returns)
@@ -620,7 +586,7 @@ shinyServer(function(input, output, session){
       # sumTable = sumTable[,-1]
       # sumTable = cbind(sec3Ret, sec4Ret)
       # sumTable = sec1Ret
-
+      
       
       sumTable = sumTable %>% rownames_to_column("Performance Analysis")
       rhandsontable(sumTable, 
@@ -650,9 +616,9 @@ shinyServer(function(input, output, session){
       
     })
     
-
-
-      
+    
+    
+    
   })
   
   

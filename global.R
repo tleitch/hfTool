@@ -1,3 +1,4 @@
+options("download.file.method" = "libcurl")
 library(data.table)
 library(lubridate)
 # pkgload::load_all(path= "/home/qsheng3/HedgeFundApp/packages/blotter")
@@ -15,12 +16,11 @@ require(ROI.plugin.quadprog)
 require(ROI.plugin.glpk)
 library(Rglpk)
 library(DEoptim)
-library(quantmod)
+library(quantstrat)
+library(blotter)
 library(downloader)
 # library(quantstrat)
 library(tseries)
-library(FinancialInstrument)
-
 
 # rsconnect::appDependencies()
 
@@ -39,7 +39,7 @@ date_choices[length(date_choices)] = today()
 # dataFF3 <- read.csv("F-F_Research_Data_Factors_daily.CSV",
 # skip=4,header=T)
 dataFF3 <- read.csv("factorsSummary.CSV",
-                    skip=4,header=T)
+                    skip=4,header=T)[,c(1,2,3,4)]
 # dataFF3=dataFF3[1:length(dataFF3[,1])-1,]
 dataFF3=dataFF3[1:(length(dataFF3[,1])-2),]
 ff3=xts(dataFF3[,2:(dim(dataFF3)[2])]/100,order.by=as.Date(dataFF3[,1],"%Y%m%d"))
@@ -58,16 +58,3 @@ df_sec3 = data.frame(
   stringsAsFactors = FALSE)
 
 colnames(df_sec3) = c("Factors", "Lower Limit", "Upper Limit")
-
-## Set up for section 2
-
-if (!exists('.blotter')) .blotter <- new.env()
-if (!exists('.strategy')) .strategy <- new.env()
-
-
-init_equity <- 10000000 # $10,000,000
-currency("USD")
-
-portfolio.st <- "Port.Luxor"
-account.st <- "Acct.Luxor"
-strategy.st <- "Strat.Luxor"
